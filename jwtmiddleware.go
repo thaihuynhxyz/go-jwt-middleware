@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/dgrijalva/jwt-go"
 	"log"
 	"net/http"
 	"strings"
+
+	"gopkg.in/square/go-jose.v2/jwt"
+	"gopkg.in/square/go-jose.v2"
 )
 
 // A function called whenever an error is encountered
@@ -25,7 +27,7 @@ type Options struct {
 	// The function that will return the Key to validate the JWT.
 	// It can be either a shared secret or a public key.
 	// Default value: nil
-	ValidationKeyGetter jwt.Keyfunc
+	ValidationKeyGetter func() (interface{}, error)
 	// The name of the property in the request where the user information
 	// from the JWT will be stored.
 	// Default value: "user"
@@ -49,14 +51,14 @@ type Options struct {
 	// If the signing method is not constant the ValidationKeyGetter callback can be used to implement additional checks
 	// Important to avoid security issues described here: https://auth0.com/blog/2015/03/31/critical-vulnerabilities-in-json-web-token-libraries/
 	// Default: nil
-	SigningMethod jwt.SigningMethod
+	SigningMethod jose.SignatureAlgorithm
 }
 
 type JWTMiddleware struct {
 	Options Options
 }
 
-func OnError(w http.ResponseWriter, r *http.Request, err string) {
+func OnError(w http.ResponseWriter, _ *http.Request, err string) {
 	http.Error(w, err, http.StatusUnauthorized)
 }
 
@@ -129,7 +131,7 @@ func FromAuthHeader(r *http.Request) (string, error) {
 	// TODO: Make this a bit more robust, parsing-wise
 	authHeaderParts := strings.Split(authHeader, " ")
 	if len(authHeaderParts) != 2 || strings.ToLower(authHeaderParts[0]) != "bearer" {
-		return "", errors.New("Authorization header format must be Bearer {token}")
+		return "", errors.New("authorization header format must be Bearer {token}")
 	}
 
 	return authHeaderParts[1], nil
@@ -137,6 +139,7 @@ func FromAuthHeader(r *http.Request) (string, error) {
 
 // FromParameter returns a function that extracts the token from the specified
 // query string parameter
+//noinspection GoUnusedExportedFunction
 func FromParameter(param string) TokenExtractor {
 	return func(r *http.Request) (string, error) {
 		return r.URL.Query().Get(param), nil
@@ -145,6 +148,7 @@ func FromParameter(param string) TokenExtractor {
 
 // FromFirst returns a function that runs multiple token extractors and takes the
 // first token it finds
+//noinspection GoUnusedExportedFunction
 func FromFirst(extractors ...TokenExtractor) TokenExtractor {
 	return func(r *http.Request) (string, error) {
 		for _, ex := range extractors {
@@ -180,7 +184,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 	// If an error occurs, call the error handler and return an error
 	if err != nil {
 		m.Options.ErrorHandler(w, r, err.Error())
-		return fmt.Errorf("Error extracting token: %v", err)
+		return fmt.Errorf("error extracting token: %v", err)
 	}
 
 	// If the token is empty...
@@ -193,36 +197,27 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 		}
 
 		// If we get here, the required token is missing
-		errorMsg := "Required authorization token not found"
+		errorMsg := "required authorization token not found"
 		m.Options.ErrorHandler(w, r, errorMsg)
 		m.logf("  Error: No credentials found (CredentialsOptional=false)")
 		return fmt.Errorf(errorMsg)
 	}
 
 	// Now parse the token
-	parsedToken, err := jwt.Parse(token, m.Options.ValidationKeyGetter)
+	parsedToken, err := jwt.ParseSigned(token)
 
 	// Check if there was an error in parsing...
 	if err != nil {
 		m.logf("Error parsing token: %v", err)
 		m.Options.ErrorHandler(w, r, err.Error())
-		return fmt.Errorf("Error parsing token: %v", err)
+		return fmt.Errorf("error parsing token: %v", err)
 	}
 
-	if m.Options.SigningMethod != nil && m.Options.SigningMethod.Alg() != parsedToken.Header["alg"] {
-		message := fmt.Sprintf("Expected %s signing method but token specified %s",
-			m.Options.SigningMethod.Alg(),
-			parsedToken.Header["alg"])
-		m.logf("Error validating token algorithm: %s", message)
-		m.Options.ErrorHandler(w, r, errors.New(message).Error())
-		return fmt.Errorf("Error validating token algorithm: %s", message)
-	}
-
-	// Check if the parsed token is valid...
-	if !parsedToken.Valid {
+	out := jwt.Claims{}
+	if err := parsedToken.Claims(m.Options.ValidationKeyGetter, &out); err != nil {
 		m.logf("Token is invalid")
-		m.Options.ErrorHandler(w, r, "The token isn't valid")
-		return errors.New("Token is invalid")
+		m.Options.ErrorHandler(w, r, err.Error())
+		return err
 	}
 
 	m.logf("JWT: %v", parsedToken)
