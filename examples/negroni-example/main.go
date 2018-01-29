@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/auth0/go-jwt-middleware"
+	"github.com/thaihuynhxyz/go-jwt-middleware"
 	"github.com/codegangsta/negroni"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 	"net/http"
+	"gopkg.in/square/go-jose.v2"
 )
 
 func main() {
@@ -19,10 +19,10 @@ func StartServer() {
 	r := mux.NewRouter()
 
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-			return []byte("My Secret"), nil
+		ValidationKeyGetter: func() (interface{}, error) {
+			return []byte("secret"), nil
 		},
-		SigningMethod: jwt.SigningMethodHS256,
+		SigningMethod: jose.HS256,
 	})
 
 	r.HandleFunc("/ping", PingHandler)
@@ -51,10 +51,10 @@ func respondJson(text string, w http.ResponseWriter) {
 	w.Write(jsonResponse)
 }
 
-func PingHandler(w http.ResponseWriter, r *http.Request) {
+func PingHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJson("All good. You don't need to be authenticated to call this", w)
 }
 
-func SecuredPingHandler(w http.ResponseWriter, r *http.Request) {
+func SecuredPingHandler(w http.ResponseWriter, _ *http.Request) {
 	respondJson("All good. You only get this message if you're authenticated", w)
 }

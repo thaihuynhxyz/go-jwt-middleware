@@ -213,8 +213,14 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 		return fmt.Errorf("error parsing token: %v", err)
 	}
 
+	key, err := m.Options.ValidationKeyGetter()
+	if err != nil {
+		m.logf("Error getting key: %v", err)
+		m.Options.ErrorHandler(w, r, err.Error())
+		return fmt.Errorf("square/go-jose: unsupported key type/format: %v", err)
+	}
 	out := jwt.Claims{}
-	if err := parsedToken.Claims(m.Options.ValidationKeyGetter, &out); err != nil {
+	if err := parsedToken.Claims(key, &out); err != nil {
 		m.logf("Token is invalid")
 		m.Options.ErrorHandler(w, r, err.Error())
 		return err
