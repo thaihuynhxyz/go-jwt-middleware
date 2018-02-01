@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/codegangsta/negroni"
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/context"
 	"github.com/gorilla/mux"
 	. "github.com/smartystreets/goconvey/convey"
@@ -13,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"gopkg.in/square/go-jose.v2"
 )
 
 // defaultAuthorizationHeaderName is the default header name where the Auth
@@ -57,8 +57,7 @@ func TestAuthenticatedRequest(t *testing.T) {
 			So(w.Code, ShouldEqual, http.StatusOK)
 		})
 		Convey("Authenticated GET to /protected path should return a 200 reponse if expected algorithm is not specified", func() {
-			var expectedAlgorithm jwt.SigningMethod
-			expectedAlgorithm = nil
+			var expectedAlgorithm jose.SignatureAlgorithm
 			w := makeAuthenticatedRequest("GET", "/protected", map[string]interface{}{"foo": "bar"}, expectedAlgorithm)
 			So(w.Code, ShouldEqual, http.StatusOK)
 			responseBytes, err := ioutil.ReadAll(w.Body)
@@ -70,7 +69,7 @@ func TestAuthenticatedRequest(t *testing.T) {
 			So(responseString, ShouldEqual, `{"text":"bar"}`)
 		})
 		Convey("Authenticated GET to /protected path should return a 200 reponse if expected algorithm is correct", func() {
-			expectedAlgorithm := jwt.SigningMethodHS256
+			expectedAlgorithm := jose.HS256
 			w := makeAuthenticatedRequest("GET", "/protected", map[string]interface{}{"foo": "bar"}, expectedAlgorithm)
 			So(w.Code, ShouldEqual, http.StatusOK)
 			responseBytes, err := ioutil.ReadAll(w.Body)
@@ -82,7 +81,7 @@ func TestAuthenticatedRequest(t *testing.T) {
 			So(responseString, ShouldEqual, `{"text":"bar"}`)
 		})
 		Convey("Authenticated GET to /protected path should return a 401 reponse if algorithm is not expected one", func() {
-			expectedAlgorithm := jwt.SigningMethodRS256
+			expectedAlgorithm := jose.RS256
 			w := makeAuthenticatedRequest("GET", "/protected", map[string]interface{}{"foo": "bar"}, expectedAlgorithm)
 			So(w.Code, ShouldEqual, http.StatusUnauthorized)
 			responseBytes, err := ioutil.ReadAll(w.Body)
@@ -100,10 +99,10 @@ func makeUnauthenticatedRequest(method string, url string) *httptest.ResponseRec
 	return makeAuthenticatedRequest(method, url, nil, nil)
 }
 
-func makeAuthenticatedRequest(method string, url string, c map[string]interface{}, expectedSignatureAlgorithm jwt.SigningMethod) *httptest.ResponseRecorder {
+func makeAuthenticatedRequest(method string, url string, c map[string]interface{}, expectedSignatureAlgorithm jose.SignatureAlgorithm) *httptest.ResponseRecorder {
 	r, _ := http.NewRequest(method, url, nil)
 	if c != nil {
-		token := jwt.New(jwt.SigningMethodHS256)
+		token := jwt.New(jose.HS256)
 		token.Claims = c
 		// private key generated with http://kjur.github.io/jsjws/tool_jwt.html
 		s, e := token.SignedString(privateKey)
@@ -118,7 +117,7 @@ func makeAuthenticatedRequest(method string, url string, c map[string]interface{
 	return w
 }
 
-func createNegroniMiddleware(expectedSignatureAlgorithm jwt.SigningMethod) *negroni.Negroni {
+func createNegroniMiddleware(expectedSignatureAlgorithm jose.SignatureAlgorithm) *negroni.Negroni {
 	// create a gorilla mux router for public requests
 	publicRouter := mux.NewRouter().StrictSlash(true)
 	publicRouter.Methods("GET").
@@ -162,7 +161,7 @@ func createNegroniMiddleware(expectedSignatureAlgorithm jwt.SigningMethod) *negr
 }
 
 // JWT creates the middleware that parses a JWT encoded token
-func JWT(expectedSignatureAlgorithm jwt.SigningMethod) *JWTMiddleware {
+func JWT(expectedSignatureAlgorithm jose.SignatureAlgorithm) *JWTMiddleware {
 	return New(Options{
 		Debug:               false,
 		CredentialsOptional: false,

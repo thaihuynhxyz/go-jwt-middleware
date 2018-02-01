@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/auth0/go-jwt-middleware"
-	"github.com/dgrijalva/jwt-go"
+	"github.com/thaihuynhxyz/go-jwt-middleware"
 	"github.com/go-martini/martini"
 	"net/http"
+	"gopkg.in/square/go-jose.v2"
 )
 
 func main() {
@@ -18,10 +18,10 @@ func StartServer() {
 	m := martini.Classic()
 
 	jwtMiddleware := jwtmiddleware.New(jwtmiddleware.Options{
-		ValidationKeyGetter: func(token *jwt.Token) (interface{}, error) {
-			return []byte("My Secret"), nil
+		ValidationKeyGetter: func() (interface{}, error) {
+			return []byte("secret"), nil
 		},
-		SigningMethod: jwt.SigningMethodHS256,
+		SigningMethod: jose.HS256,
 	})
 
 	m.Get("/ping", PingHandler)

@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/square/go-jose.v2/jwt"
 	"gopkg.in/square/go-jose.v2"
+	"time"
 )
 
 // A function called whenever an error is encountered
@@ -222,6 +223,14 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 	out := jwt.Claims{}
 	if err := parsedToken.Claims(key, &out); err != nil {
 		m.logf("Token is invalid")
+		m.Options.ErrorHandler(w, r, err.Error())
+		return err
+	}
+
+	if err = out.Validate(jwt.Expected{
+		Time: time.Now(),
+	}); err != nil {
+		m.logf("Token Validate failed")
 		m.Options.ErrorHandler(w, r, err.Error())
 		return err
 	}
