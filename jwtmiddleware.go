@@ -239,7 +239,7 @@ func (m *JWTMiddleware) CheckJWT(w http.ResponseWriter, r *http.Request) error {
 
 	// If we get here, everything worked and we can set the
 	// user property in context.
-	newRequest := r.WithContext(context.WithValue(r.Context(), m.Options.UserProperty, parsedToken))
+	newRequest := r.WithContext(context.WithValue(r.Context(), m.Options.UserProperty, out))
 	// Update the current request with the new context information.
 	*r = *newRequest
 	return nil
